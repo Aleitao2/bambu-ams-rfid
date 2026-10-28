@@ -98,7 +98,9 @@ Before a spool can be tracked, its tag UID has to be linked to a Spoolman spool 
    Any separator format works (`04-33-96-91-C9-2A-81` or `04339691C92A81`).
 3. The script normalises the UID to 16 upper-case hex characters, registers it in Spoolman
    (`rest_command.spoolman_tag_register`), and saves it to **`/config/filament_tag_map.json`**
-   through a pyscript service (`pyscript.save_filament_tag_map`).
+   through a pyscript service (`pyscript.save_filament_tag_map`, see
+   [`home-assistant/pyscript/filament_tag_map.py`](home-assistant/pyscript/filament_tag_map.py)).
+   If the spool already had another tag, the old UID is removed, so one spool always has one tag.
 4. A `command_line` sensor, **`sensor.filament_tag_map`**, reads that JSON file and exposes it as the
    `tags` attribute. The *assign filament to tray* automation looks scanned UIDs up there:
 
@@ -127,12 +129,43 @@ The HX8357 9-bit SPI driver is adapted from
 | `05_spoolman_register_from_sidebar` | Opens the tag-registration script dialog |
 | `06_bambuddy_sync_ams_slots` | Mirrors Bambuddy slot presets / spool IDs into helpers for the dashboard |
 
-`scripts/register_rfid_tag_to_spoolman.yaml` is the registration script described above.
-`helpers.yaml` lists the `input_text` / `input_number` / `counter` helpers used.
+### Files in [`home-assistant/`](home-assistant)
 
-> Not included yet: the `rest_command` definitions (Spoolman / Bambuddy / ESP32 endpoints), the
-> `command_line` sensor and the pyscript that writes `filament_tag_map.json`.
-> Entity IDs use `<printer_serial>` as a placeholder.
+| File | Purpose |
+|---|---|
+| `automations/*.yaml` | The six automations above |
+| `scripts/register_rfid_tag_to_spoolman.yaml` | Tag registration script |
+| `pyscript/filament_tag_map.py` | `pyscript.save_filament_tag_map` service: normalises the UID, removes any old UID for the same spool, writes and re-verifies `filament_tag_map.json` |
+| `rest_command.yaml` | Calls to Bambuddy (Spoolman inventory, tag register, link/unlink, AMS slot assign/unassign, slot presets) and to the ESP32 scan endpoints |
+| `configuration.example.yaml` | `rest_command` include, `pyscript` settings, the `command_line` sensor that exposes the tag map, optional Bambuddy sidebar panel |
+| `helpers.yaml` | `input_text` / `input_number` / `counter` helpers |
+| `filament_tag_map.example.json` | Format of the tag map file |
+| `secrets.example.yaml` | Secret names used by `rest_command.yaml` |
+
+### Home Assistant setup
+
+**Requirements:** [Bambu Lab integration](https://github.com/greghesp/ha-bambulab) (AMS tray sensors and `bambu_lab.read_rfid`),
+[Bambuddy](https://github.com/maziggy/bambuddy) with Spoolman inventory enabled, [pyscript](https://github.com/custom-components/pyscript) (HACS),
+and [browser_mod](https://github.com/thomasloven/hass-browser_mod) (only for automation 05).
+
+1. **Set your own addresses.** In `rest_command.yaml`, replace every `YOUR_BAMBUDDY_IP` with your Bambuddy
+   server's IP or hostname, and `YOUR_ESP32_IP` with the ESP32 reader's IP. Give the ESP32 a fixed IP
+   (DHCP reservation on your router) so it doesn't change. Do the same for `panel_iframe` in
+   `configuration.example.yaml` if you use it.
+2. **Add the API key.** Create an API key in Bambuddy and add it to `/config/secrets.yaml`
+   as `bambuddy_api_key` (see `secrets.example.yaml`).
+3. **Copy the files** to your Home Assistant `/config` folder:
+   `rest_command.yaml` → `/config/rest_command.yaml`,
+   `pyscript/filament_tag_map.py` → `/config/pyscript/filament_tag_map.py`.
+4. **Create the tag map file:** `/config/filament_tag_map.json` containing just `{}`.
+5. **Merge `configuration.example.yaml`** into your `configuration.yaml`
+   (`rest_command`, `pyscript`, `command_line` sensor).
+6. **Create the helpers** from `helpers.yaml` (in YAML or via *Settings → Devices & services → Helpers*).
+7. **Import the automations and the script.** Replace `<printer_serial>` in the entity IDs with your
+   printer's serial (e.g. `sensor.p1s_<serial>_ams_1_tray_1`).
+8. **Restart Home Assistant**, then check that `sensor.filament_tag_map` has state `active`.
+9. On the ESP32 side, set `HA_HOST` in `secrets.h` to your Home Assistant URL. The firmware posts to the
+   webhook `arduino_rfid_scanned`, which automations 02 and 03 listen on.
 
 ## Development history
 This went through ~15 iterations: reading the AMS board alone → two readers → AMS board + PN532

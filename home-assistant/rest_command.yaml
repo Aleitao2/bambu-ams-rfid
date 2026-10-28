@@ -1,0 +1,94 @@
+# rest_command.yaml
+# Before using:
+#   1. Replace YOUR_BAMBUDDY_IP with the IP/hostname of your Bambuddy server (port 8000).
+#   2. Replace YOUR_ESP32_IP with the IP of the ESP32 AMS reader (give it a DHCP reservation).
+#   3. Add `bambuddy_api_key: "<key>"` to /config/secrets.yaml (Bambuddy → Settings → API keys).
+
+# ── 1. REGISTRATION: Bind tag to Spoolman ID (Run Once Per Spool) ──
+spoolman_tag_register:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/inventory/spools/{{ spool_id }}/tag"
+  method: PATCH
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+    Content-Type: "application/json"
+  payload: >
+    {{
+      {
+        "tag_uid": (tag_uid | string | replace('-', '') | replace(':', '') ~ '0000000000000000')[:16]
+      } | to_json
+    }}
+
+# ── 2. LINK: Link Spoolman spool to Tag ──
+spoolman_spool_link:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/spools/{{ spool_id }}/link"
+  method: POST
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+    Content-Type: "application/json"
+  payload: >
+    {{
+      {
+        "printer_id": printer_id | default(1) | int,
+        "tray_id": tray_id | default(0) | int,
+        "tag_uid": (tag_uid | string | replace('-', '') | replace(':', '') ~ '0000000000000000')[:16]
+      } | to_json
+    }}
+
+# ── 3. UNLINK: Unlink Previous Spool ──
+spoolman_spool_unlink:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/spools/{{ spool_id | default(0) }}/unlink"
+  method: POST
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+
+# ── 4. ASSIGN: Assign Spool to AMS/External Slot ──
+bambubuddy_assign_slot:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/inventory/slot-assignments"
+  method: POST
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+    Content-Type: "application/json"
+  payload: >
+    {{
+      {
+        "spoolman_spool_id": spool_id | default(0) | int,
+        "printer_id": printer_id | default(1) | int,
+        "ams_id": ams_id | default(255) | int,
+        "tray_id": tray_id | default(0) | int
+      } | to_json
+    }}
+    
+# ── 5. UNASSIGN: Clear the Spool from the Slot ──
+bambubuddy_unassign_slot:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/inventory/slot-assignments/{{ spool_id | default(0) }}"
+  method: DELETE
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+
+# ── 6. RFID scan window: Reader A (AMS FM17580 board — trays 1 & 2) ──
+arduino_rfid_open_scan_window:
+  url: "http://YOUR_ESP32_IP/scan?reader=A&ignore={{ ignore_uid | default('') }}"
+  method: GET
+  timeout: 5
+ 
+# ── 7. RFID scan window: Reader B (PN532 — trays 3 & 4) ──
+arduino_rfid_open_scan_window_b:
+  url: "http://YOUR_ESP32_IP/scan?reader=B&ignore={{ ignore_uid | default('') }}"
+  method: GET
+  timeout: 5
+
+# ── 8. READ: Slot presets currently loaded in each AMS tray ──
+bambuddy_get_slot_presets:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/printers/{{ printer_id | default(1) }}/slot-presets"
+  method: GET
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+    accept: "application/json"
+
+# ── 9. READ: full spool inventory ──
+bambuddy_list_spools:
+  url: "http://YOUR_BAMBUDDY_IP:8000/api/v1/spoolman/inventory/spools"
+  method: GET
+  headers:
+    X-API-Key: !secret bambuddy_api_key
+    accept: "application/json"

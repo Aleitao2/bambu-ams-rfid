@@ -1,0 +1,29 @@
+# Snippets to add to /config/configuration.yaml for the AMS RFID tracker.
+# (Only the parts this project needs — merge them into your existing file.)
+
+# REST calls to Bambuddy (Spoolman inventory + AMS slot assignments) and to the ESP32 reader
+rest_command: !include rest_command.yaml
+
+# pyscript (install "pyscript" from HACS first) — runs pyscript/filament_tag_map.py
+pyscript:
+  allow_all_imports: true   # needed for json / pathlib
+  hass_is_global: true      # exposes hass.config.path() to the script
+
+# Exposes /config/filament_tag_map.json as sensor.filament_tag_map (attribute: tags)
+# Re-read every 10 s, so a newly registered tag is usable almost immediately.
+command_line:
+  - sensor:
+      name: "filament_tag_map"
+      unique_id: filament_tag_map_001
+      command: "jq '{tags: .}' /config/filament_tag_map.json"
+      value_template: "active"
+      json_attributes:
+        - tags
+      scan_interval: 10
+
+# Optional: Bambuddy web UI in the Home Assistant sidebar
+panel_iframe:
+  bambuddy:
+    title: "Bambuddy"
+    icon: "mdi:printer-3d"
+    url: "http://YOUR_BAMBUDDY_IP:8000"
