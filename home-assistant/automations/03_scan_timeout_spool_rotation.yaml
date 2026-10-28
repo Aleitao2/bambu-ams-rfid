@@ -1,0 +1,91 @@
+id: '1780890858738'
+alias: 'AMS – Arduino RFID scan: Timeout & Spool Rotation'
+description: Receives TIMEOUT from ESP32, rotates the AMS spool via bambu_lab.read_rfid, and retries.
+triggers:
+- trigger: webhook
+  webhook_id: arduino_rfid_scanned
+  allowed_methods:
+  - POST
+  local_only: true
+conditions:
+- condition: template
+  value_template: '{{ trigger.json is defined and trigger.json.tag_uid == "TIMEOUT" }}'
+  alias: Proceed only if this is a TIMEOUT payload
+- condition: template
+  value_template: '{{ states(''input_text.ams_active_scan_tray'') not in ['''', ''unknown'', ''unavailable''] }}'
+  alias: Proceed only if we are actively scanning a tray
+actions:
+- variables:
+    tray_slot: '{{ states(''input_text.ams_active_scan_tray'') }}'
+    current_retries: '{{ states(''input_number.ams_scan_retries'') | int(0) }}'
+    max_retries: '{{ states(''input_number.ams_scan_max_retries'') | int(3) }}'
+- alias: 'Guard: stop if there is no valid tray being scanned'
+  if:
+  - condition: template
+    value_template: '{{ tray_slot | string not in [''1'', ''2'', ''3'', ''4''] }}'
+  then:
+  - stop: No active scan tray (manual run or scan already finished) - nothing to rotate
+- choose:
+  - conditions:
+    - condition: template
+      value_template: '{{ current_retries < max_retries }}'
+    sequence:
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.ams_scan_retries
+      data:
+        value: '{{ current_retries + 1 }}'
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray {{ tray_slot }} scan timed out. Retry {{ current_retries + 1 }}/{{ max_retries }}. Rotating spool...'
+        level: warning
+    - action: bambu_lab.read_rfid
+      data:
+        entity_id: sensor.p1s_<printer_serial>_ams_1_tray_{{ tray_slot }}
+    - delay:
+        seconds: 8
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ tray_slot | int(0) == 1 }}'
+        sequence:
+        - action: rest_command.arduino_rfid_open_scan_window
+          data:
+            ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_2'') }}'
+      - conditions:
+        - condition: template
+          value_template: '{{ tray_slot | int(0) == 2 }}'
+        sequence:
+        - action: rest_command.arduino_rfid_open_scan_window
+          data:
+            ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_1'') }}'
+      - conditions:
+        - condition: template
+          value_template: '{{ tray_slot | int(0) == 3 }}'
+        sequence:
+        - action: rest_command.arduino_rfid_open_scan_window_b
+          data:
+            ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_4'') }}'
+      - conditions:
+        - condition: template
+          value_template: '{{ tray_slot | int(0) == 4 }}'
+        sequence:
+        - action: rest_command.arduino_rfid_open_scan_window_b
+          data:
+            ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_3'') }}'
+  default:
+  - action: system_log.write
+    data:
+      message: '[AMS] Tray {{ tray_slot }} RFID scan failed completely after {{ max_retries }} retries.'
+      level: error
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.ams_active_scan_tray
+    data:
+      value: ''
+  - action: input_number.set_value
+    target:
+      entity_id: input_number.ams_scan_retries
+    data:
+      value: 0
+mode: single

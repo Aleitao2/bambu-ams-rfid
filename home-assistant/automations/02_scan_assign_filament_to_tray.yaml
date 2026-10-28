@@ -1,0 +1,85 @@
+id: '1780700082147'
+alias: 'AMS – Arduino RFID scan: assign filament to tray'
+description: Normalizes UID to 16 chars, looks up Spoolman ID, unlinks old, and assigns via BambuBuddy.
+triggers:
+- trigger: webhook
+  webhook_id: arduino_rfid_scanned
+  allowed_methods:
+  - POST
+  local_only: true
+conditions:
+- condition: template
+  value_template: '{{ trigger.json is defined and trigger.json.tag_uid != "TIMEOUT" }}'
+  alias: Abort if this is a timeout event
+- condition: template
+  value_template: '{{ filament != {} }}'
+  alias: Abort if padded 16-char UID not in filament_tag_map
+- condition: template
+  value_template: '{{ tray_slot not in ['''', ''unknown'', ''unavailable''] }}'
+  alias: Abort if no tray is waiting for a scan
+actions:
+- choose:
+  - conditions:
+    - condition: template
+      value_template: '{{ prev_spool_id not in ['''', ''unknown'', ''unavailable'', ''none''] }}'
+    sequence:
+    - action: rest_command.bambubuddy_unassign_slot
+      data:
+        spool_id: '{{ prev_spool_id }}'
+    - delay:
+        milliseconds: 500
+    - action: rest_command.spoolman_spool_unlink
+      data:
+        spool_id: '{{ prev_spool_id }}'
+    - delay:
+        milliseconds: 500
+- action: rest_command.spoolman_spool_link
+  data:
+    spool_id: '{{ filament.spoolman_id }}'
+    tag_uid: '{{ uid }}'
+    printer_id: 1
+    tray_id: '{{ tray_id_0indexed }}'
+- delay:
+    milliseconds: 500
+- action: rest_command.bambubuddy_assign_slot
+  data:
+    spool_id: '{{ filament.spoolman_id }}'
+    printer_id: 1
+    ams_id: 0
+    tray_id: '{{ tray_id_0indexed }}'
+- delay:
+    milliseconds: 500
+- action: input_text.set_value
+  target:
+    entity_id: input_text.last_scanned_spoolman_id_tray_{{ tray_slot }}
+  data:
+    value: '{{ filament.spoolman_id | string }}'
+- action: input_text.set_value
+  target:
+    entity_id: input_text.last_scanned_uid_tray_{{ tray_slot }}
+  data:
+    value: '{{ trigger.json.tag_uid | string }}'
+- action: input_text.set_value
+  target:
+    entity_id: input_text.ams_active_scan_tray
+  data:
+    value: ''
+- action: system_log.write
+  data:
+    message: '[AMS] Tray {{ tray_slot }} (ams_id=0, tray_id={{ tray_id_0indexed }}): unlinked spool {{ prev_spool_id }}, assigned spool {{ filament.spoolman_id }} (uid={{ uid }}).'
+    level: info
+- action: input_number.set_value
+  target:
+    entity_id: input_number.ams_scan_retries
+  data:
+    value: 0
+mode: queued
+max: 4
+variables:
+  raw_uid: '{{ trigger.json.tag_uid | default("") | string }}'
+  uid: '{{ (raw_uid | replace("-", "") | replace(":", "") | upper).ljust(16, "0") }}'
+  tags: '{% set m = state_attr(''sensor.filament_tag_map'', ''tags'') %} {{ m if m is mapping else {} }}'
+  filament: '{{ tags.get(uid, {}) }}'
+  tray_slot: '{{ states(''input_text.ams_active_scan_tray'') }}'
+  tray_id_0indexed: '{{ (tray_slot | int) - 1 }}'
+  prev_spool_id: '{{ states(''input_text.last_scanned_spoolman_id_tray_'' ~ tray_slot) }}'

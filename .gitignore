@@ -1,0 +1,5 @@
+secrets.h
+secrets.yaml
+.vscode/
+build/
+*.bin

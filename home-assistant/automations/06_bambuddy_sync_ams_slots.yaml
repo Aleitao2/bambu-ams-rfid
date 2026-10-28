@@ -1,0 +1,73 @@
+id: '1788849588392'
+alias: Bambuddy — Sync AMS Slot Presets
+description: Polls the Bambuddy API for (a) the filament preset loaded in each AMS tray and (b) the Spoolman spool assigned to each tray, mirroring both into input_text helpers so the dashboard can show preset name + grams remaining. Runs every 2 minutes, at HA start, and whenever an AMS tray sensor changes so a fresh RFID assignment shows up right away.
+triggers:
+- event: start
+  trigger: homeassistant
+- minutes: /2
+  trigger: time_pattern
+- entity_id:
+  - sensor.p1s_<printer_serial>_ams_1_tray_1
+  - sensor.p1s_<printer_serial>_ams_1_tray_2
+  - sensor.p1s_<printer_serial>_ams_1_tray_3
+  - sensor.p1s_<printer_serial>_ams_1_tray_4
+  trigger: state
+actions:
+- alias: Read the preset loaded in each tray
+  action: rest_command.bambuddy_get_slot_presets
+  data:
+    printer_id: 1
+  response_variable: bb
+- alias: Abort if the API did not answer 200
+  condition: template
+  value_template: '{{ bb.status == 200 and bb.content is mapping }}'
+- action: input_text.set_value
+  data:
+    value: '{{ bb.content.get(''0'', {}).get(''preset_name'', ''empty'') }}'
+  target:
+    entity_id: input_text.bambuddy_slot_1
+- action: input_text.set_value
+  data:
+    value: '{{ bb.content.get(''1'', {}).get(''preset_name'', ''empty'') }}'
+  target:
+    entity_id: input_text.bambuddy_slot_2
+- action: input_text.set_value
+  data:
+    value: '{{ bb.content.get(''2'', {}).get(''preset_name'', ''empty'') }}'
+  target:
+    entity_id: input_text.bambuddy_slot_3
+- action: input_text.set_value
+  data:
+    value: '{{ bb.content.get(''3'', {}).get(''preset_name'', ''empty'') }}'
+  target:
+    entity_id: input_text.bambuddy_slot_4
+- alias: Find the external spool by ams_id 255, whatever key it sits under
+  variables:
+    external: '{% set ns = namespace(v=''empty'') %}{% for k, p in bb.content.items() %}{% if p is mapping and p.get(''ams_id'') == 255 %}{% set ns.v = p.get(''preset_name'', ''empty'') %}{% endif %}{% endfor %}{{ ns.v }}'
+- action: input_text.set_value
+  data:
+    value: '{{ external }}'
+  target:
+    entity_id: input_text.bambuddy_external_spool
+- alias: Read which Spoolman spool is assigned to each tray (slot-assignments/all)
+  action: rest_command.bambuddy_get_slot_presets
+  data:
+    printer_id: ../spoolman/inventory/slot-assignments/all?from=ha&
+  response_variable: asg
+  continue_on_error: true
+- alias: Build tray-ordered spool id list (tray 1..4) and the external spool id
+  variables:
+    rows: '{{ asg.content if (asg is defined and asg.status == 200 and asg.content is sequence and asg.content is not string and asg.content is not mapping) else [] }}'
+    ams_ids: '{% set ns = namespace(out=[]) %}{% for t in range(4) %}{% set m = rows | selectattr(''ams_id'',''eq'',0) | selectattr(''tray_id'',''eq'',t) | list %}{% set ns.out = ns.out + [ (m[0].spoolman_spool_id | string) if m | count > 0 else ''0'' ] %}{% endfor %}{{ ns.out | join('','') }}'
+    ext_id: '{% set e = rows | selectattr(''ams_id'',''eq'',255) | list %}{{ (e[0].spoolman_spool_id | string) if e | count > 0 else ''0'' }}'
+- action: input_text.set_value
+  data:
+    value: '{{ ams_ids }}'
+  target:
+    entity_id: input_text.bambuddy_ams_spool_ids
+- action: input_text.set_value
+  data:
+    value: '{{ ext_id }}'
+  target:
+    entity_id: input_text.bambuddy_external_spool_id
+mode: single

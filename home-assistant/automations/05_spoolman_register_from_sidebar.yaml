@@ -1,0 +1,18 @@
+id: '1781071754098'
+alias: 'Spoolman RFID: Auto-Trigger from Sidebar'
+description: Opens the 'Register RFID Tag to Spoolman' script dialog (browser_mod) when the Scripts page is opened from the sidebar.
+triggers:
+- entity_id:
+  - sensor.desktop_browser_path
+  - sensor.tablet_browser_path
+  to: /script
+  trigger: state
+actions:
+- target:
+    entity_id: script.register_rfid_tag_to_spoolman
+  action: script.turn_on
+- data:
+    entity: script.register_rfid_tag_to_spoolman
+    browser_id: '{{ trigger.entity_id.split(''.'')[1] | replace(''_path'', '''') }}'
+  action: browser_mod.more_info
+mode: single

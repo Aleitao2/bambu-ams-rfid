@@ -1,0 +1,44 @@
+register_rfid_tag_to_spoolman:
+  alias: Register RFID Tag to Spoolman
+  description: Binds a raw RFID tag UID to a Spoolman spool ID. Passes plain scalars to pyscript.save_filament_tag_map — no Jinja2 dict serialisation, no 255-char limit, no single-quote/JSON mismatch.
+  fields:
+    spool_id:
+      name: Spool ID
+      description: The integer ID from Spoolman (e.g. 5)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 9999
+          mode: box
+    tag_uid:
+      name: Tag UID
+      description: Raw UID from the ESP32/Arduino — any separator format accepted (e.g. 04-33-96-91-C9-2A-81 or 04339691C92A81). Normalised to 16 upper-case hex chars.
+      required: true
+      selector:
+        text: null
+    friendly_name:
+      name: Friendly name (optional)
+      description: Human-readable label (e.g. "ABS Black Bambu"). Defaults to "Spoolman ID <N>" if omitted.
+      required: false
+      selector:
+        text: null
+  variables:
+    uid: '{{ (tag_uid | replace(''-'','''') | replace('':'','''') | upper ~ ''0000000000000000'')[:16] }}'
+    label: '{{ friendly_name | default("Spoolman ID " ~ spool_id) }}'
+  sequence:
+  - condition: template
+    value_template: '{{ uid | length == 16 and spool_id | int > 0 }}'
+  - action: rest_command.spoolman_tag_register
+    data:
+      spool_id: '{{ spool_id }}'
+      tag_uid: '{{ uid }}'
+  - action: pyscript.save_filament_tag_map
+    data:
+      spool_id: '{{ spool_id | int }}'
+      tag_uid: '{{ uid }}'
+      friendly_name: '{{ label }}'
+  - action: system_log.write
+    data:
+      message: '[RFID-REG] UID {{ uid }} -> spool {{ spool_id }} ({{ label }}). Written to /config/filament_tag_map.json.'
+      level: info

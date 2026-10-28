@@ -1,0 +1,49 @@
+id: '1780700179850'
+alias: 'AMS – tray remove: unlink spool'
+description: When any AMS tray goes to Empty, unlinks the previously assigned spool from both Spoolman and BambuBuddy, then clears the helper. Spool ID comes from the RFID-scan helper, or falls back to the spool Bambuddy reports for that tray when the helper is empty.
+triggers:
+- trigger: state
+  entity_id:
+  - sensor.p1s_<printer_serial>_ams_1_tray_1
+  - sensor.p1s_<printer_serial>_ams_1_tray_2
+  - sensor.p1s_<printer_serial>_ams_1_tray_3
+  - sensor.p1s_<printer_serial>_ams_1_tray_4
+  to: Empty
+conditions:
+- condition: template
+  value_template: '{{ trigger.from_state.state not in [''unavailable'', ''unknown''] }}'
+actions:
+- choose:
+  - conditions:
+    - condition: template
+      value_template: '{{ prev_spool_id not in ['''', ''unknown'', ''unavailable'', ''none''] }}'
+    sequence:
+    - action: rest_command.bambubuddy_unassign_slot
+      data:
+        spool_id: '{{ prev_spool_id }}'
+    - delay:
+        milliseconds: 500
+    - action: rest_command.spoolman_spool_unlink
+      data:
+        spool_id: '{{ prev_spool_id }}'
+    - delay:
+        milliseconds: 500
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.last_scanned_spoolman_id_tray_{{ tray_slot }}
+      data:
+        value: ''
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.last_scanned_uid_tray_{{ tray_slot }}
+      data:
+        value: ''
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray {{ tray_slot }} removed. Unlinked spool {{ prev_spool_id }}.'
+        level: info
+variables:
+  tray_slot: '{{ trigger.entity_id.split(''_tray_'') | last }}'
+  prev_spool_id: '{% set helper = states(''input_text.last_scanned_spoolman_id_tray_'' ~ tray_slot) %}{% set bb = (states(''input_text.bambuddy_ams_spool_ids'').split('','') + [''0'',''0'',''0'',''0''])[tray_slot|int(0) - 1] | trim %}{{ helper if helper not in ['''', ''unknown'', ''unavailable'', ''none''] else ('''' if bb in [''0'',''''] else bb) }}'
+mode: parallel
+max: 4

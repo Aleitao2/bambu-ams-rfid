@@ -1,0 +1,87 @@
+id: '1780700141646'
+alias: 'AMS – tray insert: trigger Arduino RFID scan'
+description: On AMS tray state Empty -> filament, if the tray has no spool assigned in Bambuddy, waits for any running scan to finish, then stores the active tray slot and tells the Arduino to open its scan window. Queued so trays inserted together (e.g. after a printer reboot) are scanned one at a time.
+triggers:
+- trigger: state
+  entity_id:
+  - sensor.p1s_<printer_serial>_ams_1_tray_1
+  - sensor.p1s_<printer_serial>_ams_1_tray_2
+  - sensor.p1s_<printer_serial>_ams_1_tray_3
+  - sensor.p1s_<printer_serial>_ams_1_tray_4
+  from: Empty
+  for:
+    seconds: 3
+conditions:
+- condition: template
+  value_template: '{{ trigger.to_state.state not in [''unavailable'', ''unknown'', ''Empty''] }}'
+- condition: template
+  alias: Skip if this tray is the one being scanned right now (AMS flicker from read_rfid)
+  value_template: '{{ tray_slot | string != states(''input_text.ams_active_scan_tray'') }}'
+- condition: template
+  alias: Skip if Bambuddy already has a spool assigned to this tray
+  value_template: '{{ ((states(''input_text.bambuddy_ams_spool_ids'').split('','') + [''0'',''0'',''0'',''0''])[(tray_slot | int(0)) - 1] | trim) in [''0'', ''''] }}'
+actions:
+- alias: Wait for any other tray scan to finish first
+  wait_template: '{{ states(''input_text.ams_active_scan_tray'') in ['''', ''unknown'', ''unavailable''] }}'
+  timeout:
+    minutes: 3
+  continue_on_timeout: false
+- action: input_number.set_value
+  target:
+    entity_id: input_number.ams_scan_retries
+  data:
+    value: 0
+- action: input_text.set_value
+  target:
+    entity_id: input_text.ams_active_scan_tray
+  data:
+    value: '{{ tray_slot }}'
+- choose:
+  - conditions:
+    - condition: template
+      value_template: '{{ tray_slot | int == 1 }}'
+    sequence:
+    - action: rest_command.arduino_rfid_open_scan_window
+      data:
+        ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_2'') }}'
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray 1 inserted. Arduino Reader A (MFRC522) scan window opened. Ignoring Tray 2 UID.'
+        level: info
+  - conditions:
+    - condition: template
+      value_template: '{{ tray_slot | int == 2 }}'
+    sequence:
+    - action: rest_command.arduino_rfid_open_scan_window
+      data:
+        ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_1'') }}'
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray 2 inserted. Arduino Reader A (MFRC522) scan window opened. Ignoring Tray 1 UID.'
+        level: info
+  - conditions:
+    - condition: template
+      value_template: '{{ tray_slot | int == 3 }}'
+    sequence:
+    - action: rest_command.arduino_rfid_open_scan_window_b
+      data:
+        ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_4'') }}'
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray 3 inserted. Arduino Reader B (PN532) scan window opened. Ignoring Tray 4 UID.'
+        level: info
+  - conditions:
+    - condition: template
+      value_template: '{{ tray_slot | int == 4 }}'
+    sequence:
+    - action: rest_command.arduino_rfid_open_scan_window_b
+      data:
+        ignore_uid: '{{ states(''input_text.last_scanned_uid_tray_3'') }}'
+    - action: system_log.write
+      data:
+        message: '[AMS] Tray 4 inserted. Arduino Reader B (PN532) scan window opened. Ignoring Tray 3 UID.'
+        level: info
+variables:
+  tray_slot: '{{ trigger.entity_id.split(''_tray_'') | last }}'
+mode: queued
+max: 4

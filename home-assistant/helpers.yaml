@@ -1,0 +1,72 @@
+input_text:
+  ams_active_scan_tray:
+    name: AMS active scan tray
+    max: 2
+  last_scanned_uid_tray_1:
+    name: Last Scanned UID – AMS tray 1
+    max: 50
+  last_scanned_uid_tray_2:
+    name: Last Scanned UID – AMS tray 2
+    max: 50
+  last_scanned_uid_tray_3:
+    name: Last Scanned UID – AMS tray 3
+    max: 50
+  last_scanned_uid_tray_4:
+    name: Last Scanned UID – AMS tray 4
+    max: 50
+  last_scanned_spoolman_id_tray_1:
+    name: Last Spoolman ID – AMS tray 1
+    max: 20
+  last_scanned_spoolman_id_tray_2:
+    name: Last Spoolman ID – AMS tray 2
+    max: 20
+  last_scanned_spoolman_id_tray_3:
+    name: Last Spoolman ID – AMS tray 3
+    max: 20
+  last_scanned_spoolman_id_tray_4:
+    name: Last Spoolman ID – AMS tray 4
+    max: 20
+  bambuddy_slot_1:
+    name: Bambuddy Slot 1
+    max: 255
+    icon: mdi:spool
+  bambuddy_slot_2:
+    name: Bambuddy Slot 2
+    max: 255
+    icon: mdi:circle-slice-8
+  bambuddy_slot_3:
+    name: Bambuddy Slot 3
+    max: 255
+    icon: mdi:circle-slice-8
+  bambuddy_slot_4:
+    name: Bambuddy Slot 4
+    max: 255
+    icon: mdi:circle-slice-8
+  bambuddy_external_spool:
+    name: Bambuddy External Spool
+    max: 255
+    icon: mdi:printer-3d-nozzle
+  bambuddy_ams_spool_ids:
+    name: Bambuddy AMS Spool IDs
+    max: 255
+    icon: mdi:tray-full
+  bambuddy_external_spool_id:
+    name: Bambuddy External Spool ID
+    max: 10
+    icon: mdi:identifier
+input_number:
+  ams_scan_retries:
+    name: AMS RFID Scan Retries
+    min: 0
+    max: 10
+    step: 1
+    initial: 0
+  ams_scan_max_retries:
+    name: AMS RFID Max Retries Allowed
+    min: 1
+    max: 10
+    step: 1
+    initial: 3
+counter:
+  ams_rfid_retry_count:
+    name: AMS RFID — retry count
